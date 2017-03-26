@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="http://cdn.bootcss.com/bootstrap/4.0.0-alpha.6/css/bootstrap.min.css">
+<script src="http://cdn.bootcss.com/angular.js/1.3.0/angular.min.js"></script>
+<script src="http://cdn.bootcss.com/require.js/2.3.3/require.min.js"></script>
+<script src="http://cdn.bootcss.com/jquery/1.11.0/jquery.js"></script>
+<script src="stock.js"></script>
+</head>
+<body ng-app="myApp">
+
+<div class="container" ng-controller="ctrl">
+	<hr>
+	<div>
+		<span>股票数:{{count}}/{{all}} <span>
+		<span>选中:{{select.length}} <span>
+		<button class="btn btn-success" ng-click="run()">选股</button>
+		<button class="btn btn-success" ng-click="search=false;">停止</button>
+	</div>
+	<hr>
+	<div ng-repeat="e in select">
+		<div>
+			<span>{{e.id}} <span>
+			<a ng-click="e.show=!e.show;">查图</a>
+		</div>
+		<div ng-if="e.show">
+			<div>
+				<img ng-src="http://image.sinajs.cn/newchart/daily/n/{{e.id}}.gif" />
+			</div>
+			<div>
+				<img ng-src="http://image.sinajs.cn/newchart/min/n/{{e.id}}.gif" />
+			</div>
+			<div>
+			</div>
+		</div>
+	</div>
+ 
+</div><!-- container -->
+
+<script>
+
+var app = angular.module('myApp', []);
+
+var _data = {};
+var _day = {};
+var _trim;
+	
+app.controller('ctrl', function($scope, $http) {
+
+	function getStockData(i = 0, all = 0){
+		var id = _stock[i];
+		if (!all){
+			id = i;
+		}
+		
+		if (!id){
+			return;
+		}
+		
+		function finish(data, status) {
+			if (all && $scope.search){
+				i += parseInt(all) || 1;
+				getStockData(i, all);
+			}
+			
+			if (!(_data[id] && _data[id].length)){
+				return;
+			}
+			_day[id] = combData(_data[id]);
+			
+			if (typeof _trim == "function"){
+				try{
+				_trim(id, _day[id], _data[id]);
+				}catch(e){};
+			}
+		}
+		
+		if (_data[id] && _day[id]){
+			finish();
+		}else{
+			$http.jsonp("http://money.finance.sina.com.cn/quotes_service/api/jsonp_v2.php/_data['" 
+				+ id + "']=/CN_MarketData.getKLineData?symbol=" + id + "&scale=15&datalen=1023").
+			success(finish).error(finish);
+		}
+	}
+
+	function combData(data){
+		var out = [];
+		try {
+		for (var i = 0; i < data.length; ){
+			var e = data[i];
+			// {day:"2017-03-09 10:45:00",open:"41.170",high:"41.260",low:"41.160",close:"41.240",volume:"92200",ma_price5:41.324,ma_volume5:242366}
+			var temp = {
+				day : e.day.split(" ")[0],
+				open : e.open,
+				volume : parseFloat(e.volume)||0,
+				ma_price5 : parseFloat(e.ma_price5)||0,
+				ma_volume5 : parseFloat(e.ma_volume5)||0,
+			};
+			for (var j = 0; j < 16; j++, i++){
+				e = data[i];
+				temp.close = e.close;
+				temp.volume += parseFloat(e.volume)||0;
+				temp.ma_price5 += parseFloat(e.ma_price5)||0;
+				temp.ma_volume5 += parseFloat(e.ma_volume5)||0;
+			}
+			temp.ma_price5 /= 16;
+			temp.ma_volume5 /= 16;
+			temp.radio = (temp.close - temp.open)/temp.open;
+			out.push(temp);
+		}
+		}catch(e){}
+		return out;
+	}
+
+	getStockData(_stock[0])
+	
+	$scope.select = [];
+	$scope.count = 0;
+	
+	$scope.filter = {
+		"up" : function(id, day, min15){
+			$scope.count++;
+			console.log([id, day, min15]);
+			var len = day.length;
+			var d3 = day[len-3], d2 = day[len-2], d1 = day[len-1];
+			if (d1.radio > 0){
+				$scope.select.push({
+					id : id, 
+					day : day, 
+					min15 : min15
+				});
+			}
+		},
+		"test" : function(id, day, min15){
+			$scope.count++;
+			var len = day.length;
+			var d3 = day[len-3], d2 = day[len-2], d1 = day[len-1];
+			if ((d2.volume / d3.volume > 2)
+			&& (d2.radio < 0) && (d3.radio < 0)){
+				$scope.select.push({
+					id : id, 
+					day : day, 
+					min15 : min15
+				});
+			}
+		}
+	}
+	
+	$scope.run = function(){
+		$scope.select = [];
+		$scope.count = 0;
+		$scope.all = _stock.length;
+		$scope.search = true;
+		_trim = $scope.filter.test;
+		
+		getStockData(0, 5);
+		getStockData(1, 5);
+		getStockData(2, 5);
+		getStockData(3, 5);
+		getStockData(4, 5);
+	}
+
+});
+</script>
+
+</body>
+</html>
